@@ -1,0 +1,29 @@
+models:
+  prompt:
+    id: Qwen/Qwen2.5-1.5B-Instruct-GGUF
+    name: Qwen Editing Director Q4_K_M
+    revision: 91cad51170dc346986eccefdc2dd33a9da36ead9
+    file: qwen2.5-1.5b-instruct-q4_k_m.gguf
+    size_gb: 1.04
+    min_ram: 2
+    license: Apache-2.0
+  flux:
+    id: city96/FLUX.2-dev-gguf
+    name: FLUX.2-dev Q2_K
+    revision: ade5d688ddab0d9cf4a5b01bf4321e01c115020d
+    file: flux2-dev-Q2_K.gguf
+    size_gb: 20.57
+    min_ram: 8
+    license: FLUX.2-dev Non-Commercial License
+    support:
+    - id: unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF
+      revision: b750ec2299225e492f1bd27cab88a0a595fa848f
+      file: Mistral-Small-3.2-24B-Instruct-2506-Q2_K.gguf
+      destination: text_encoders
+    - id: Comfy-Org/flux2-dev
+      revision: ed33133cd56476eac818c0943b6f9419b3e4a3a1
+      file: split_files/vae/flux2-vae.safetensors
+      destination: vae
+limits:
+  ai_storage_gib: 30
+  backend_runtime_estimate_gib: 5.0

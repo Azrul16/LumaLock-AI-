@@ -1,0 +1,7 @@
+preview_size: 1400
+tile_size: 384
+identity_lock: true
+face_expansion: 0.25
+export_quality: 95
+preserve_metadata: true
+prompt_logging: false

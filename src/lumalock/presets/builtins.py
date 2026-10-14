@@ -1,0 +1,35 @@
+"""Built-in styles are editable parameters, never flattened photos."""
+
+PRESETS = {
+    "Natural Fix": {
+        "contrast": 0.06,
+        "highlights": -0.12,
+        "shadows": 0.10,
+        "vibrance": 0.08,
+        "sharpening": 0.1,
+    },
+    "Clean Portrait": {"shadows": 0.12, "contrast": 0.04, "temperature": 0.04, "sharpening": 0.08},
+    "Outdoor Balanced": {"highlights": -0.2, "shadows": 0.14, "vibrance": 0.12},
+    "Indoor Natural": {"temperature": -0.05, "tint": 0.03, "shadows": 0.12},
+    "Low Light Repair": {"exposure": 0.5, "shadows": 0.22, "denoise": 0.25, "highlights": -0.12},
+    "Soft Portrait": {"contrast": -0.08, "clarity": -0.1, "temperature": 0.04},
+    "Professional Profile": {"contrast": 0.10, "shadows": 0.08, "sharpening": 0.12},
+    "Golden Hour": {"temperature": 0.25, "highlights": -0.12, "contrast": 0.08, "vibrance": 0.10},
+    "Warm Cinematic": {
+        "temperature": 0.18,
+        "contrast": 0.16,
+        "highlights": -0.15,
+        "saturation": -0.08,
+    },
+    "Moody Blue": {"temperature": -0.18, "exposure": -0.15, "contrast": 0.15, "saturation": -0.1},
+    "Film Soft": {"contrast": -0.08, "blacks": 0.08, "grain": 0.12, "temperature": 0.04},
+    "Travel Vibrant": {"vibrance": 0.25, "contrast": 0.10, "highlights": -0.12},
+    "Sunset Drama": {"temperature": 0.2, "contrast": 0.18, "highlights": -0.25, "vibrance": 0.18},
+    "Studio Contrast": {"contrast": 0.25, "blacks": -0.06, "sharpening": 0.1},
+    "Sunrise": {"temperature": 0.14, "shadows": 0.12, "highlights": -0.12},
+    "Morning": {"temperature": 0.05, "brightness": 0.05, "vibrance": 0.08},
+    "Noon": {"temperature": -0.03, "highlights": -0.18, "shadows": 0.08},
+    "Afternoon": {"temperature": 0.18, "highlights": -0.15, "contrast": 0.08},
+    "Blue Hour": {"temperature": -0.22, "saturation": -0.08, "shadows": 0.10},
+    "Night": {"exposure": -0.3, "temperature": -0.12, "highlights": -0.12},
+}

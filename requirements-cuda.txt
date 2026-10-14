@@ -1,0 +1,3 @@
+# Install torch and torchvision using the compatible CUDA index first.
+# See docs/installation_windows.md. All commands must use .venv's interpreter.
+-e .[ai]
