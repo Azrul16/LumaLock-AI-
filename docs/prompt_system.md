@@ -1,14 +1,14 @@
-# Prompt system
+# Deterministic prompts
 
-Qwen2.5-1.5B-Instruct Q4_K_M receives the user prompt, measured photo statistics and editing
-state. Its compact grammar produces mode, user request, FLUX instruction and strength;
-validated EditingRequest defaults enforce the remaining controls. Model output is never code.
-Explicit scene changes require Creative AI and an editable mask. Photographic corrections
-route to Natural AI. The director cannot disable Identity Lock or override protected pixels.
+The user's original-language text is included verbatim in USER REQUEST, followed by fixed
+editing requirements. Natural mode preserves structure; Creative mode allows requested scene
+changes. Explicit UI mode always takes priority. Identity requirements are added automatically
+when protection is enabled. Protected regions receive original-pixel recovery after generation.
 
-AI Enhance previews a plan before Apply / Generate starts FLUX. Changing the prompt requires
-a new preview; generation reads the current strength. The Qwen model unloads before FLUX
-starts to reduce memory pressure. Invalid director output is rejected rather than executed.
+The twelve photographic presets are text only. Dramatic Sky enhances existing sky in Natural
+mode and permits requested sky changes in Creative. Auto Enhance uses measured brightness,
+contrast, clipping, saturation, channel balance, noise and sharpness from NumPy/OpenCV.
+No translation, remote prompt API, separate model, or neural prompt interpretation is used.
 
-Conventional quick looks and manual sliders work without downloaded AI weights. Their
-keyword parser supports a limited vocabulary; routing confidence is advisory.
+Bangla and other Unicode text is retained. Empty prompts are rejected. Prompt preparation
+runs as ordinary local code before the FLUX text-conditioning pipeline.

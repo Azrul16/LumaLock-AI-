@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 
 def resource_path(name: str) -> Path:
@@ -29,10 +29,11 @@ class Settings(BaseModel):
     generative_backend: str = Field("flux", pattern="^flux$")
     flux_license_accepted: bool = False
     first_run_done: bool = False
-    ai_setup_requested: list[Literal["prompt", "flux"]] = Field(default_factory=list)
-    quality_mode: str = Field("Maximum", pattern="^(Preview|Quality|Maximum)$")
+    ai_setup_requested: list[Literal["flux"]] = Field(default_factory=list)
+    quality_mode: str = Field("Quality", pattern="^(Preview|Quality|Maximum)$")
+    pipeline_version: int = 3
     allow_slow_models: bool = True
-    creative_resolution: int = Field(1024, ge=512, le=2048)
+    creative_resolution: int = Field(1536, ge=1024, le=2048)
 
 
 def data_dir() -> Path:
@@ -56,8 +57,21 @@ def load_settings(path: Path | None = None) -> Settings:
     if not path.exists():
         return Settings()
     try:
-        return Settings.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")) or {})
-    except (OSError, ValidationError, yaml.YAMLError):
+        values = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(values, dict):
+            raise ValueError("Settings must be a mapping")
+        if values.get("pipeline_version", 1) < 3:
+            values["quality_mode"] = "Quality"
+            values["creative_resolution"] = max(1536, values.get("creative_resolution", 1536))
+            values["pipeline_version"] = 3
+        # Retire the former execution watchdog, including persisted 1800-second values.
+        values.pop("edit_budget_seconds", None)
+        requested = values.get("ai_setup_requested", [])
+        values["ai_setup_requested"] = (
+            [key for key in requested if key == "flux"] if isinstance(requested, list) else []
+        )
+        return Settings.model_validate(values)
+    except (OSError, ValueError, TypeError, yaml.YAMLError):
         logging.getLogger("lumalock.config").warning("Invalid settings; using safe defaults")
         return Settings()
 

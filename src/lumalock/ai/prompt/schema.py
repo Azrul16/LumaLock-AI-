@@ -1,4 +1,4 @@
-"""Untrusted model output must pass this schema before entering the edit state."""
+"""Validated deterministic edit plans and image-generation options."""
 
 from typing import Literal
 

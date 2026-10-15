@@ -26,4 +26,20 @@ def patch_gguf_runtime(root):
             old in source
             and '"load_device": comfy.model_management.get_torch_device()' not in source
         ):
-            nodes.write_text(source.replace(old, new), encoding="utf-8")
+            source = source.replace(old, new)
+        # Keep file-backed quantized storage on memory-limited machines. The plugin's
+        # eager mmap-detach copies whole encoders/transformers into private RAM/pagefile.
+        if "    mmap_released = False" in source:
+            if "import os\n" not in source:
+                source = "import os\n" + source
+            source = source.replace(
+                "    mmap_released = False",
+                '    mmap_released = os.environ.get("LUMALOCK_KEEP_GGUF_MMAP") == "1"',
+            )
+        clone_old = 'n.mmap_released = getattr(self, "mmap_released", False)'
+        clone_new = 'n.mmap_released = os.environ.get("LUMALOCK_KEEP_GGUF_MMAP") == "1" or getattr(self, "mmap_released", False)'
+        if clone_old in source:
+            if "import os\n" not in source:
+                source = "import os\n" + source
+            source = source.replace(clone_old, clone_new)
+        nodes.write_text(source, encoding="utf-8")

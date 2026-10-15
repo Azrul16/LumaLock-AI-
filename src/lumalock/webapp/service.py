@@ -6,11 +6,15 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from lumalock.ai.prompt.presets import PRESETS
+from lumalock.ai.prompt.prompt_builder import build_flux_prompt
 from lumalock.core.config import load_settings, save_settings
 from lumalock.core.exceptions import Cancelled, UserError
 from lumalock.core.hardware import detect_hardware
 from lumalock.core.model_manager import MODEL_SPECS, ModelManager
+from lumalock.imaging.protection import ProtectionShape
 from lumalock.pipeline.chat_edit import edit_chat_image
+from lumalock.pipeline.photo_correction import is_photo_correction
 from lumalock.project.chat import ChatStore, ChatTurn, Conversation
 from lumalock.webapp.progress import JobTiming
 
@@ -75,6 +79,7 @@ class ImageService:
                         "complete": self.models.installed(key),
                         "available": self.models.available(key),
                         "gib": spec["size_gb"],
+                        "components": getattr(self.models, "component_status", lambda _: [])(key),
                     }
                     for key, spec in MODEL_SPECS.items()
                 ],
@@ -83,6 +88,7 @@ class ImageService:
                     "device": self.settings.device,
                     "license_accepted": self.settings.flux_license_accepted,
                 },
+                "presets": list(PRESETS),
                 "hardware": self.hardware.to_dict(),
             }
 
@@ -112,6 +118,7 @@ class ImageService:
             chat = self.get_chat(identifier)
             name = self.store.remember_image(temporary)
             chat.selected_image = chat.selected_root = name
+            chat.protection = []
             if not chat.turns:
                 chat.title = Path(filename).stem[:48] or "Photo edit"
             self.store.save(chat)
@@ -130,6 +137,8 @@ class ImageService:
                     allowed[chat.selected_image] = chat.selected_root
                 if image not in allowed or not self.store.asset(image).is_file():
                     raise UserError("That image is unavailable in this chat. Attach it again.")
+                if chat.selected_root != allowed[image]:
+                    chat.protection = []
                 chat.selected_image, chat.selected_root = image, allowed[image]
             self.store.save(chat)
             return chat.model_dump()
@@ -140,7 +149,28 @@ class ImageService:
                 self.timing.update(value)
                 self.job.update(progress=value, message=message)
 
-    def start_edit(self, identifier, prompt, preserve=True, quality="Maximum", device="auto"):
+    def set_protection(self, identifier, shapes):
+        with self.lock:
+            self.require_idle()
+            if not isinstance(shapes, list) or len(shapes) > 256:
+                raise UserError("Use at most 256 protection strokes.")
+            chat = self.get_chat(identifier)
+            if not chat.selected_root:
+                raise UserError("Attach a photo before adding protection.")
+            chat.protection = [ProtectionShape.model_validate(shape) for shape in shapes]
+            self.store.save(chat)
+            return chat.model_dump()
+
+    def start_edit(
+        self,
+        identifier,
+        prompt,
+        preserve=True,
+        quality="Quality",
+        device="auto",
+        mode="Natural",
+        preset=None,
+    ):
         with self.lock:
             self.require_idle()
             if not isinstance(prompt, str):
@@ -148,6 +178,7 @@ class ImageService:
             prompt = prompt.strip()
             if not prompt or len(prompt) > 12000:
                 raise UserError("Enter a prompt between 1 and 12,000 characters.")
+            build_flux_prompt(prompt, mode, preserve, preset=preset)
             if quality not in ("Preview", "Quality", "Maximum") or device not in (
                 "auto",
                 "cpu",
@@ -174,6 +205,11 @@ class ImageService:
                 source=chat.selected_image,
                 root=chat.selected_root,
                 preserve_people=preserve,
+                mode=mode,
+                preset=preset,
+                quality=quality,
+                method="photo_correction" if is_photo_correction(prompt, mode, preset) else "flux",
+                protection=chat.protection,
             )
             chat.turns.append(turn)
             chat.title = prompt[:48]
@@ -196,6 +232,7 @@ class ImageService:
             "status": "running",
             "progress": -1,
             "message": "Preparing…",
+            "limit_seconds": None,
         }
 
     def _edit(self, chat, turn):
@@ -208,11 +245,18 @@ class ImageService:
                 turn.preserve_people,
                 self.cancelled.is_set,
                 self.progress,
+                mode=turn.mode,
+                preset=turn.preset,
+                protection=turn.protection,
             )
             if self.cancelled.is_set():
                 raise Cancelled("Edit stopped. Your earlier images are unchanged.")
             name = self.store.remember_image(path)
             with self.lock:
+                if self.cancelled.is_set():
+                    raise Cancelled(
+                        "Edit stopped before publishing. Your earlier images are unchanged."
+                    )
                 turn.result, turn.status = name, "complete"
                 chat.selected_image, chat.selected_root = name, turn.root
                 self.store.save(chat)
@@ -248,7 +292,7 @@ class ImageService:
         with self.lock:
             self.require_idle()
             if not keys or any(key not in MODEL_SPECS for key in keys):
-                raise UserError("Select the supported Qwen / FLUX models.")
+                raise UserError("Select the FLUX image engine.")
             if (
                 "flux" in keys
                 and not verify

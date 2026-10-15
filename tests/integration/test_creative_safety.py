@@ -77,3 +77,34 @@ def test_missing_generation_model_is_actionable(local_storage):
         FluxBackend(models).edit(
             None, "Add clouds", None, GenerativeOptions(), lambda: False, lambda *_: None
         )
+
+
+def test_in_memory_manual_protection_overrides_automatic_candidates(
+    photograph, local_storage, monkeypatch
+):
+    class Backend:
+        def edit(self, image, prompt, mask, options, cancelled, progress):
+            return np.full_like(image, 240)
+
+    monkeypatch.setitem(GENERATIVE_BACKENDS.factories, "flux", lambda **_: Backend())
+    monkeypatch.setattr(
+        "lumalock.pipeline.creative_edit.face_mask",
+        lambda *a: (_ for _ in ()).throw(AssertionError("Manual selection must be authoritative")),
+    )
+    manual = np.zeros(photograph.shape[:2], np.float32)
+    manual[40:75, 50:100] = 1
+    models = ModelManager(Hardware(8, "CPU", 0, "LOW_MEMORY", "3.11", "test"))
+    layer = MaskLayer(id="all", name="All", kind="rectangle", geometry=[0, 0, 1, 1])
+    output = creative_edit(
+        photograph,
+        EditState(),
+        layer,
+        EditPlan(generative=GenerativeOptions(enabled=True, prompt="Late afternoon")),
+        models,
+        lambda: False,
+        lambda *_: None,
+        manual,
+    )
+    result = cv2.cvtColor(cv2.imread(str(output)), cv2.COLOR_BGR2RGB)
+    np.testing.assert_array_equal(result[manual > 0], photograph[manual > 0])
+    assert np.any(result[manual == 0] != photograph[manual == 0])

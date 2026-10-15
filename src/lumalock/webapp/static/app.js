@@ -16,7 +16,7 @@ function duration(seconds) {
 }
 function progressMetrics(className = "progress-metrics") {
   const metrics = node("div", className);
-  metrics.append(node("span", "progress-percent"), node("span", "progress-eta"), node("span", "progress-elapsed"));
+  metrics.append(node("span", "progress-percent"), node("span", "progress-eta"), node("span", "progress-elapsed"), node("span", "progress-budget"));
   return metrics;
 }
 function updateMetrics(container, job) {
@@ -25,6 +25,8 @@ function updateMetrics(container, job) {
   container.querySelector(".progress-percent").textContent = percent === null ? "Measuring progress…" : `This stage: ${percent}%`;
   container.querySelector(".progress-eta").textContent = job.status === "stopping" ? "Stopping safely…" : Number.isFinite(job.eta_seconds) ? `About ${duration(job.eta_seconds)} left in this stage` : "Time remaining: estimating…";
   container.querySelector(".progress-elapsed").textContent = Number.isFinite(job.elapsed_seconds) ? `Elapsed ${duration(job.elapsed_seconds)}` : "Restart server to enable timing";
+  const budget = container.querySelector(".progress-budget"); budget.hidden = !Number.isFinite(job.limit_seconds);
+  if (!budget.hidden) budget.textContent = `Execution limit ${duration(job.limit_seconds)} · ${duration(Math.max(0, job.limit_seconds - (job.elapsed_seconds || 0)))} remaining`;
 }
 function notice(message = "") { $("notice").textContent = message; $("notice").hidden = !message; }
 function toast(message) { $("toast").textContent = message; $("toast").hidden = false; setTimeout(() => { $("toast").hidden = true; }, 3500); }
@@ -49,7 +51,7 @@ async function deleteChat(identifier, title) {
   selecting = true; renderState();
   try {
     const result = await api(`/api/chats/${encodeURIComponent(identifier)}`, { method: "DELETE" });
-    if (selectedChat === identifier) { selectedChat = result.next_chat_id; $("prompt").value = ""; }
+    if (selectedChat === identifier) { selectedChat = result.next_chat_id; $("prompt").value = ""; $("edit-mode").value = "Natural"; $("preset").value = ""; $("preserve").checked = true; }
     localStorage.setItem("lumalock-chat", selectedChat); lastRender = ""; notice(); toast("Chat deleted.");
   } catch (error) { notice(error.message); }
   finally { selecting = false; await refresh(true); }
@@ -95,12 +97,13 @@ function renderConversation(chat) {
     if (turn.status === "complete" && turn.result) {
       wrapper.append(photo(turn.result, "result-image", "Edited image"));
       const actions = node("div", "image-actions"), save = node("a"), edit = node("button");
-      save.href = imageUrl(turn.result) + "?download=1"; save.download = "LumaLock-edit.png"; save.innerHTML = icons.save; save.append(document.createTextNode("Save image"));
+      save.href = imageUrl(turn.result) + "?download=1"; save.download = "LumaLock-edit-4K.png"; save.innerHTML = icons.save; save.append(document.createTextNode("Save 4K image"));
       edit.type = "button"; edit.innerHTML = icons.edit; edit.append(document.createTextNode("Edit image")); edit.disabled = busy(); edit.addEventListener("click", () => chooseImage(turn.result));
-      actions.append(save, edit, node("span", "image-caption", "Keep refining with a follow-up prompt.")); wrapper.append(actions);
+      actions.append(save, edit, node("span", "image-caption", `${turn.method === "photo_correction" ? "Original-resolution photo correction" : turn.method === "flux" ? "FLUX edit - " + turn.quality : "Legacy result"}. 4K save enlarges smaller images.`)); wrapper.append(actions);
+      const compare = node("button", "", "Before / after"); compare.type = "button"; compare.addEventListener("click", () => { $("compare-before").src = imageUrl(turn.root) + "?preview=1024"; $("compare-after").src = imageUrl(turn.result) + "?preview=1024"; $("compare-dialog").showModal(); }); actions.append(compare);
     } else if (turn.status === "failed") {
       const error = node("div", "error-message"); error.append(node("p", "", turn.error || "This edit could not finish."));
-      const retry = node("button", "", "Retry edit"); retry.type = "button"; retry.disabled = busy(); retry.addEventListener("click", async () => { if (!await chooseImage(turn.source)) return; $("prompt").value = turn.prompt; $("preserve").checked = turn.preserve_people; await send(); });
+      const retry = node("button", "", "Retry edit"); retry.type = "button"; retry.disabled = busy(); retry.addEventListener("click", async () => { try { if (!await chooseImage(turn.source)) return; $("prompt").value = turn.prompt; $("preserve").checked = turn.preserve_people; $("edit-mode").value = turn.mode || "Natural"; $("preset").value = turn.preset || ""; await post(`/api/chats/${selectedChat}/protection`, {shapes: turn.protection || []}); await send(); } catch (error) { notice(error.message); } });
       error.append(retry); wrapper.append(error);
     } else {
       const working = node("div", "generation-placeholder");
@@ -112,7 +115,7 @@ function renderConversation(chat) {
       const heading = node("div", "working-message"); heading.append(node("span", "spinner"), node("span", "generation-stage", "Preparing your image…"));
       const stop = node("button", "stop-edit", "Stop"); stop.type = "button"; stop.setAttribute("aria-label", "Stop edit"); stop.addEventListener("click", () => stopOperation(stop)); heading.append(stop);
       const bar = node("progress", "generation-progress"); bar.max = 100; bar.setAttribute("aria-label", "Current stage completion");
-      working.append(canvas, heading, bar, progressMetrics(), node("p", "progress-note", "Progress is for the current stage. Loading and final processing can take additional time."));
+      working.append(canvas, heading, bar, progressMetrics(), node("p", "progress-note", "Current-stage progress. Execution limit: 30 minutes, including loading and final processing."));
       wrapper.append(working);
     }
     messages.append(wrapper);
@@ -137,6 +140,9 @@ function renderState() {
     remove.addEventListener("click", () => deleteChat(item.id, item.title)); row.append(button, remove); list.append(row);
   }
   renderConversation(chat);
+  $("protect-area").disabled = active || !chat.selected_root;
+  $("edit-mode").disabled = $("preset").disabled = active;
+  $("protection-count").textContent = chat.protection?.length ? `(${chat.protection.length})` : "";
   $("attachment").hidden = !chat.selected_image;
   if (chat.selected_image) {
     const url = imageUrl(chat.selected_image) + "?preview=320"; if ($("attachment-image").getAttribute("src") !== url) $("attachment-image").src = url;
@@ -181,17 +187,19 @@ function renderState() {
   const models = $("model-list"); models.replaceChildren();
   for (const model of snapshot.models) {
     const row = node("div", "model-row"), details = node("div");
-    details.append(node("strong", "", model.name), node("small", "", `${model.gib} GiB${model.key === "flux" ? " · includes encoder and VAE" : " · editing director"}`));
-    row.append(details, node("span", `model-status${model.complete ? " ready" : ""}`, model.complete ? (model.available ? "Files complete" : "Runtime missing") : "Setup needed")); models.append(row);
+    details.append(node("strong", "", model.name), node("small", "", `${model.gib} GiB · includes text conditioning and VAE`));
+    for (const component of model.components || []) details.append(node("small", "", `${component.name}: ${component.present ? "file present" : "missing"}`));
+    row.append(details, node("span", `model-status${model.complete ? " ready" : ""}`, model.complete ? (model.available ? "Ready" : "Runtime missing") : "Setup needed")); models.append(row);
   }
   $("hardware").textContent = `${snapshot.hardware.gpu} · ${snapshot.hardware.vram_gb} GiB VRAM · ${snapshot.hardware.ram_gb} GiB RAM`;
   $("memory-guidance").hidden = snapshot.hardware.ram_gb > 16;
   const hasGPU = snapshot.hardware.vram_gb > 0;
   $("device").querySelector('[value="auto"]').textContent = hasGPU ? "CPU + GPU (automatic)" : "Automatic (CPU)";
   $("device").querySelector('[value="cuda"]').disabled = !hasGPU;
-  $("device-guidance").textContent = hasGPU ? "CPU handles planning and host work; CUDA handles image computation. Supported transfers can overlap through one asynchronous stream. Memory recovery may use CPU fallback." : "Image processing runs on the CPU because no NVIDIA GPU was detected.";
+  $("device-guidance").textContent = hasGPU ? "CPU handles image preparation and host work; CUDA handles image computation. Supported transfers can overlap through one asynchronous stream. Memory recovery may use CPU fallback." : "Image processing runs on the CPU because no NVIDIA GPU was detected.";
   if (!initialized) {
     $("quality").value = snapshot.settings.quality; $("device").value = snapshot.settings.device; $("license").checked = snapshot.settings.license_accepted;
+    for (const name of snapshot.presets || []) { const option = node("option", "", name); option.value = name; $("preset").append(option); }
     initialized = true;
     if (snapshot.models.some(model => !model.complete)) $("settings-dialog").showModal();
   }
@@ -225,7 +233,7 @@ async function send() {
   if (snapshot.models.some(model => !model.complete)) { $("settings-dialog").showModal(); return notice("Complete model setup, then send your prompt again."); }
   submitting = true; renderState();
   try {
-    snapshot.job = await post(`/api/chats/${selectedChat}/edit`, { prompt, preserve: $("preserve").checked, quality: $("quality").value, device: $("device").value });
+    snapshot.job = await post(`/api/chats/${selectedChat}/edit`, { prompt, preserve: $("preserve").checked, quality: $("quality").value, device: $("device").value, mode: $("edit-mode").value, preset: $("preset").value || null });
     if ($("prompt").value.trim() === prompt) $("prompt").value = ""; notice(); lastRender = "";
   } catch (error) { notice(error.message); }
   finally { submitting = false; await refresh(true); $("thread").scrollTop = $("thread").scrollHeight; }
@@ -241,19 +249,88 @@ async function upload(file) {
   finally { uploading = false; $("photo-input").value = ""; await refresh(true); $("prompt").focus(); }
 }
 $("composer").addEventListener("submit", event => { event.preventDefault(); send(); });
+$("preset").addEventListener("change", () => { if (!$("prompt").value.trim() && $("preset").value) $("prompt").value = `Apply the ${$("preset").value} photographic look.`; });
+let protectionDraft = [], protectionActive = null, protectionImage = null;
+function drawProtection() {
+  const canvas = $("protection-canvas"), ctx = canvas.getContext("2d");
+  if (!protectionImage) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(protectionImage, 0, 0, canvas.width, canvas.height);
+  const overlay = document.createElement("canvas"); overlay.width = canvas.width; overlay.height = canvas.height;
+  const paint = overlay.getContext("2d"); paint.fillStyle = paint.strokeStyle = "#76e5b1"; paint.lineCap = paint.lineJoin = "round";
+  for (const shape of [...protectionDraft, ...(protectionActive ? [protectionActive] : [])]) {
+    const points = shape.points.map(([x, y]) => [x * canvas.width, y * canvas.height]);
+    const radius = shape.radius * Math.min(canvas.width, canvas.height);
+    paint.globalCompositeOperation = shape.tool === "erase" ? "destination-out" : "source-over";
+    paint.beginPath();
+    if (["brush", "erase"].includes(shape.tool)) {
+      paint.lineWidth = radius * 2;
+      if (points.length === 1) { paint.arc(...points[0], radius, 0, Math.PI * 2); paint.fill(); }
+      else { paint.moveTo(...points[0]); for (const point of points.slice(1)) paint.lineTo(...point); paint.stroke(); }
+    } else if (points.length === 2) {
+      const [a, b] = points, left = Math.min(a[0], b[0]), top = Math.min(a[1], b[1]), width = Math.abs(b[0] - a[0]), height = Math.abs(b[1] - a[1]);
+      if (shape.tool === "rectangle") paint.rect(left, top, width, height);
+      else paint.ellipse(left + width / 2, top + height / 2, Math.max(1, width / 2), Math.max(1, height / 2), 0, 0, 2 * Math.PI);
+      paint.fill();
+    }
+  }
+  ctx.globalAlpha = 0.42; ctx.drawImage(overlay, 0, 0); ctx.globalAlpha = 1;
+}
+function protectionPoint(event) {
+  const box = $("protection-canvas").getBoundingClientRect();
+  return [Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)), Math.max(0, Math.min(1, (event.clientY - box.top) / box.height))];
+}
+$("protect-area").addEventListener("click", () => {
+  if (busy() || !snapshot.chat.selected_root) return;
+  protectionDraft = structuredClone(snapshot.chat.protection || []); protectionActive = null;
+  $("protection-status").textContent = "Loading photo…"; $("apply-protection").disabled = true;
+  const image = new Image(); protectionImage = null;
+  image.onload = () => { protectionImage = image; const canvas = $("protection-canvas"); canvas.width = image.width; canvas.height = image.height; drawProtection(); $("protection-status").textContent = "Green areas keep their original pixels."; $("apply-protection").disabled = false; };
+  image.onerror = () => { $("protection-status").textContent = "Photo unavailable. Close this dialog and attach it again."; };
+  image.src = imageUrl(snapshot.chat.selected_root) + "?preview=1024"; $("protection-dialog").showModal();
+});
+$("protection-canvas").addEventListener("pointerdown", event => {
+  if (!protectionImage) return;
+  if (protectionDraft.length >= 256) { $("protection-status").textContent = "Protection limit reached. Undo or Clear before adding more strokes."; return; }
+  event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
+  const point = protectionPoint(event), tool = $("protection-tool").value;
+  protectionActive = { tool, points: [point], radius: Number($("protection-size").value) / 100 };
+  if (["ellipse", "rectangle"].includes(tool)) protectionActive.points.push(point);
+  drawProtection();
+});
+$("protection-canvas").addEventListener("pointermove", event => {
+  if (!protectionActive) return;
+  const point = protectionPoint(event);
+  if (["ellipse", "rectangle"].includes(protectionActive.tool)) protectionActive.points[1] = point;
+  else if (protectionActive.points.length < 2048) protectionActive.points.push(point);
+  drawProtection();
+});
+$("protection-canvas").addEventListener("pointerup", () => { if (protectionActive) protectionDraft.push(protectionActive); protectionActive = null; drawProtection(); });
+$("protection-canvas").addEventListener("pointercancel", () => { protectionActive = null; drawProtection(); });
+$("undo-protection").addEventListener("click", () => { protectionDraft.pop(); drawProtection(); });
+$("clear-protection").addEventListener("click", () => { protectionDraft = []; protectionActive = null; drawProtection(); });
+$("close-protection").addEventListener("click", () => $("protection-dialog").close());
+$("apply-protection").addEventListener("click", async () => {
+  if (busy()) return;
+  selecting = true; $("apply-protection").disabled = true;
+  try { await post(`/api/chats/${selectedChat}/protection`, { shapes: protectionDraft }); $("protection-dialog").close(); if (protectionDraft.length) $("preserve").checked = true; notice(); }
+  catch (error) { $("protection-status").textContent = error.message; }
+  finally { selecting = false; $("apply-protection").disabled = false; await refresh(true); }
+});
 $("prompt").addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); send(); } });
 $("attach").addEventListener("click", () => $("photo-input").click());
 $("photo-input").addEventListener("change", event => upload(event.target.files[0]));
 $("remove-attachment").addEventListener("click", async () => { try { await post(`/api/chats/${selectedChat}/select`, { image: null }); lastRender = ""; await refresh(true); } catch (error) { notice(error.message); } });
-$("new-chat").addEventListener("click", async () => { try { const chat = await post("/api/chats"); selectedChat = chat.id; $("prompt").value = ""; notice(); lastRender = ""; await refresh(true); $("prompt").focus(); } catch (error) { notice(error.message); } });
+$("new-chat").addEventListener("click", async () => { try { const chat = await post("/api/chats"); selectedChat = chat.id; $("prompt").value = ""; $("edit-mode").value = "Natural"; $("preset").value = ""; $("preserve").checked = true; notice(); lastRender = ""; await refresh(true); $("prompt").focus(); } catch (error) { notice(error.message); } });
 for (const id of ["open-settings", "settings-shortcut"]) $(id).addEventListener("click", () => { $("settings-dialog").showModal(); if (snapshot) renderState(); });
 $("close-settings").addEventListener("click", () => $("settings-dialog").close());
 $("settings-dialog").addEventListener("close", () => { if (snapshot) renderState(); });
 $("close-image").addEventListener("click", () => $("image-dialog").close());
+$("close-compare").addEventListener("click", () => $("compare-dialog").close());
+$("compare-dialog").addEventListener("close", () => { $("compare-before").removeAttribute("src"); $("compare-after").removeAttribute("src"); });
 $("toggle-sidebar").addEventListener("click", () => $("sidebar").classList.toggle(innerWidth <= 650 ? "mobile-open" : "collapsed"));
 $("license").addEventListener("change", () => { if (!busy()) $("download-models").disabled = !$("license").checked; });
 for (const [id, verify] of [["download-models", false], ["verify-models", true]]) $(id).addEventListener("click", async () => {
-  try { await post("/api/models", { keys: ["prompt", "flux"], accept_license: $("license").checked, verify }); notice(); await refresh(true); }
+  try { await post("/api/models", { keys: ["flux"], accept_license: $("license").checked, verify }); notice(); await refresh(true); }
   catch (error) { $("model-job").hidden = false; $("model-job-text").textContent = error.message; }
 });
 $("pause-models").addEventListener("click", event => stopOperation(event.currentTarget));

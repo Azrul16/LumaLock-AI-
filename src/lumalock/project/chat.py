@@ -13,6 +13,7 @@ from lumalock.core.config import data_dir
 from lumalock.core.exceptions import UserError
 from lumalock.export.exporter import export_image
 from lumalock.imaging.image_io import load_image
+from lumalock.imaging.protection import ProtectionShape
 
 
 class ChatTurn(BaseModel):
@@ -21,6 +22,11 @@ class ChatTurn(BaseModel):
     source: str
     root: str
     preserve_people: bool = True
+    mode: Literal["Natural", "Creative"] = "Natural"
+    preset: str | None = None
+    quality: Literal["Preview", "Quality", "Maximum"] | None = None
+    method: Literal["flux", "photo_correction"] | None = None
+    protection: list[ProtectionShape] = Field(default_factory=list, max_length=256)
     status: Literal["working", "complete", "failed"] = "working"
     result: str | None = None
     error: str | None = None
@@ -33,6 +39,7 @@ class Conversation(BaseModel):
     turns: list[ChatTurn] = Field(default_factory=list)
     selected_image: str | None = None
     selected_root: str | None = None
+    protection: list[ProtectionShape] = Field(default_factory=list, max_length=256)
 
 
 class ChatStore:

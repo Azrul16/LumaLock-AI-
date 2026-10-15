@@ -1,67 +1,46 @@
 # LumaLock AI
 
-**Edit beautifully. Preserve identity.** A local Windows photo editor with a simple default
-workspace, advanced photographic controls and an optional two-model AI workflow.
+A local browser photo editor powered by one image engine: FLUX.2-dev Q2_K.
 
-## Run the portable app
+Open **Launch LumaLock AI.cmd**. It opens the browser and runs the Python server in the
+foreground. Keep its terminal open; closing it stops the server and its owned AI workers.
+The application uses only this project's Python 3.11 `.venv`.
 
-Open `dist/LumaLockAI/LumaLockAI.exe`. Keep the entire `LumaLockAI` folder together
-in a writable location. Python and the local backend are bundled; no separate Python
-installation is needed. First-run setup offers Qwen and FLUX downloads after license
-acknowledgement. Fresh builds omit model weights. Setup stores downloaded models beside the app; personal photographs are never bundled.
+Attach a photo, choose Natural or Creative, optionally choose a photographic preset, and
+describe your edit. Ordinary Python templates append editing requirements without translating
+or rewriting your language. There is no separate prompt model or model-loading stage.
+Save the returned PNG, choose Edit image to branch, or delete chats from the sidebar.
 
-Model files total about 21.61 GiB. The bundled AI runtime uses approximately 5 GiB; the AI
-storage limit is 30 GiB. Leave extra space for downloads, working files and output.
-Windows x64 is required. NVIDIA GPU acceleration needs a compatible current driver; CPU
-fallback is slower and full FLUX still needs substantial memory/virtual memory.
+Preserve people restores original protected pixels. Protect area adds brush, ellipse,
+rectangle and eraser tools; manual regions override automatic classical face selection.
+Review protection coverage. No recognition score or extra neural mask model is used.
 
-The model choices are fixed: FLUX.2-dev Q2_K and Qwen2.5-1.5B-Instruct Q4_K_M. The FLUX
-bundle includes its Mistral Q2_K encoder and VAE. No additional neural models are installed.
-FLUX.2-dev uses the Non-Commercial License; each recipient must review and acknowledge it.
-See [licenses](docs/licensing.md) and [verified status](docs/STATUS.md).
+Quality is now the default: 1024px generation with a 40-step base schedule. Maximum uses
+1536px / 50 base steps; Draft is explicitly 512px / 12 base steps. Actual sampling depends
+on edit strength. Memory recovery retries at the same resolution with stronger offloading.
+There is **no execution time cutoff**; Stop remains available.
 
-## Edit in chat
+**Save 4K image** exports a PNG with at least 3840px on its longest edge, keeping aspect
+ratio and retaining larger source sizes. Square photos become 3840?3840. Working images
+remain at original dimensions to preserve masks and edit branches. Current 4K enlargement
+uses Lanczos; it is not native 4K generation or neural detail recovery. Smaller generated
+images cannot regain genuine detail merely by enlarging them.
 
-1. Click **+ Photo** or drop a photo into the chat.
-2. Describe the change and press **Send** (Enter). Shift+Enter adds a new line.
-3. The returned image appears in the conversation with **Save image** and **Edit image**.
-4. Click **Edit image** on any result to continue from that version. A normal follow-up
-   automatically uses the latest result. The original identity reference stays fixed.
+For conservative full-resolution correction, use Natural mode, no preset (or Professional
+Enhance), and the exact prompt `auto enhance`, `professional enhance`, or `enhance this photo`.
+This applies measured photo adjustments without diffusion or denoising. Other prompts use
+FLUX. Protection still restores original pixels. Read [the quality review](docs/quality-research.md)
+for observed degradation, the recommended architecture, candidate models and limitations.
 
-Chats and image versions are saved locally. The sidebar reopens earlier conversations.
-Errors appear beside the request with **Retry edit**; Stop cancels work without losing earlier
-results. Preserve people defaults on and recovers original protected face pixels. Review
-coverage carefully: classical detection can miss faces. Use Advanced editor for manual masks,
-light/color controls, crop, projects and conventional model-free editing. For a scene without
-people, you can explicitly switch Preserve people off.
+`models/flux/` contains the transformer, required text-conditioning encoder and VAE, about
+20.57 GiB. These are one image pipeline. Models & settings downloads/repairs/verifies only
+that bundle. FLUX requires non-commercial license acknowledgement. Python libraries are
+not counted as model storage. Chats, originals' managed copies, settings and logs are in data/.
 
-**Models & settings** manages downloads, checksum verification and repair. Quality controls
-trade processing time for image resolution and sampling steps. Your photos stay on this device.
+Use only `.venv/Scripts/python.exe -m pip` for installations, never global pip or --user.
+Run `.venv/Scripts/python.exe -m pytest -q` for tests, `download_models.py --verify` for
+integrity, and `validate_models.py --image "my photo.jpg"` for real acceptance validation.
+All commands must use `.venv/Scripts/python.exe`.
 
-## Source development
-
-Use Python 3.11 in this project's `.venv`; never install globally or with `--user`.
-
-```powershell
-.\.venv\Scripts\python.exe launch.py
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe validate_photo.py 'my photo.jpg'
-.\.venv\Scripts\python.exe diagnostics.py
-.\.venv\Scripts\python.exe build.py
-```
-
-The source environment additionally needs the pinned ComfyUI and ComfyUI-GGUF checkout under
-`runtime/comfyui` and project-local AI dependencies. `requirements-lock.txt` records the
-Windows Python 3.11 environment. The standalone distribution is the intended recipient path.
-
-AI setup uses a dedicated progress dialog with real downloaded bytes, speed, remaining time,
-pause, retry and resume. Missing files or an incomplete component bundle cannot be marked ready.
-Downloads publish the installation manifest only after all files pass upstream SHA-256 checks;
-model integrity is checked before inference. AI actions open setup when a model is missing.
-Settings provides Download / Repair and Verify, with current file status. App updates preserve
-existing models and settings.
-
-64 automated tests, actual Qwen inference, backend startup, standalone EXE launch and acceptance
-tests on the user photo have passed. Qwen is complete and SHA-256 verified in this installation.
-All FLUX components are now downloaded and have passed checksum verification. The real
-FLUX image test is still in progress; see docs/STATUS.md for the verified result and limits.
+Legacy dist/build files and obsolete model weights may remain because automatic approval
+review blocked deletion; they are unused. No EXE or ZIP build workflow is active.

@@ -5,3 +5,5 @@ face_expansion: 0.25
 export_quality: 95
 preserve_metadata: true
 prompt_logging: false
+pipeline_version: 3
+quality_mode: Quality

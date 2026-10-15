@@ -1,100 +1,85 @@
-"""Explicit real-model acceptance checks after the user installs the two bundles."""
+"""Real FLUX-only photo acceptance check with the same execution limit as the app."""
 
 import argparse
+import hashlib
 import json
 import time
 from pathlib import Path
 
-from lumalock.ai.analyzer.scene_analyzer import analyze
-from lumalock.core.exceptions import UserError
-from lumalock.core.hardware import detect_hardware
-from lumalock.core.model_manager import ModelManager
-from lumalock.imaging.image_io import load_image
+import numpy as np
+from PIL import Image
+
+from lumalock.ai.identity.detector import face_mask
+from lumalock.core.config import data_dir
+from lumalock.project.chat import ChatStore
+from lumalock.webapp.service import ImageService
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", choices=["prompt", "flux"], default="prompt")
     parser.add_argument("--image", type=Path, required=True)
+    parser.add_argument("--quality", choices=["Preview", "Quality", "Maximum"], default="Quality")
     args = parser.parse_args()
-    models = ModelManager(detect_hardware())
-    if not models.available(args.model):
-        raise UserError("Install the selected model bundle before this real acceptance check.")
-    image = load_image(args.image)
-    start = time.perf_counter()
-    if args.model == "prompt":
-        from lumalock.ai.prompt.local_model import direct
-
-        request = direct(
-            "Make this photo professionally edited.",
-            analyze(image.preview(1200)),
-            models,
-            lambda: False,
-            lambda v, m: print(m, flush=True),
+    original_bytes = args.image.read_bytes()
+    store = ChatStore(data_dir() / "preview" / "flux-acceptance" / "chats")
+    service = ImageService(store=store)
+    chat = service.new_chat()
+    service.attach(chat["id"], args.image, args.image.name)
+    start = time.monotonic()
+    previous = None
+    try:
+        service.start_edit(
+            chat["id"],
+            "Make this photo look like beautiful late afternoon with warm natural light. Do not change my face.",
+            quality=args.quality,
+            mode="Natural",
+            preset="Late Afternoon",
         )
-        assert (
-            request.mode == "natural" and request.preserve_identity and request.preserve_composition
-        )
-        assert not models.loaded
-        print(
-            json.dumps(
-                {
-                    "real_qwen_inference": True,
-                    "mode": request.mode,
-                    "unloaded": True,
-                    "seconds": time.perf_counter() - start,
-                }
+        while True:
+            state = service.state(chat["id"])
+            job = state["job"]
+            mark = (job["progress"], job["message"])
+            if mark != previous:
+                print(json.dumps(job), flush=True)
+                previous = mark
+            if job["status"] not in ("running", "stopping"):
+                break
+            time.sleep(1)
+        success = job["status"] == "complete"
+        report = {
+            "real_flux_inference": success,
+            "quality_profile": args.quality,
+            "seconds": round(time.monotonic() - start, 2),
+            "status": job["status"],
+            "message": job["message"],
+            "original_unchanged": hashlib.sha256(original_bytes).hexdigest()
+            == hashlib.sha256(args.image.read_bytes()).hexdigest(),
+            "separate_prompt_model_loaded": False,
+        }
+        if success:
+            result_path = store.asset(state["chat"]["turns"][-1]["result"])
+            root = np.asarray(
+                Image.open(store.asset(state["chat"]["turns"][-1]["root"])).convert("RGB")
             )
-        )
-    else:
-        import cv2
-        import numpy as np
-
-        from lumalock.ai.identity.detector import face_mask
-        from lumalock.ai.prompt.schema import EditPlan, GenerativeOptions
-        from lumalock.pipeline.creative_edit import creative_edit
-        from lumalock.project.edit_state import EditState, MaskLayer
-
-        models.settings.quality_mode = "Preview"
-        protected, faces = face_mask(image.pixels)
-        if not faces:
-            raise UserError(
-                "Choose a frontal portrait or mark a manual protection mask for this acceptance test."
+            result = np.asarray(Image.open(result_path).convert("RGB"))
+            protected, _ = face_mask(root, service.settings.face_expansion)
+            report.update(
+                output=str(result_path),
+                protected_pixels_exact=bool(
+                    np.array_equal(root[protected > 0], result[protected > 0])
+                ),
+                dimensions_retained=result.shape == root.shape,
             )
-        layer = MaskLayer(id="whole", name="Natural edit", kind="rectangle", geometry=[0, 0, 1, 1])
-        plan = EditPlan(
-            generative=GenerativeOptions(
-                enabled=True,
-                prompt="Professionally enhance this reference photograph. Preserve every person, face, clothing and composition. Improve lighting and natural color balance.",
-                strength=0.4,
-            )
+            assert report["protected_pixels_exact"] and report["dimensions_retained"]
+        (data_dir() / "preview" / "flux-direct-acceptance.json").write_text(
+            json.dumps(report, indent=2)
         )
-        output = creative_edit(
-            image.pixels,
-            EditState(),
-            layer,
-            plan,
-            models,
-            lambda: False,
-            lambda v, m: print(m, flush=True),
-        )
-        result = cv2.cvtColor(cv2.imread(str(output)), cv2.COLOR_BGR2RGB)
-        np.testing.assert_array_equal(result[protected > 0], image.pixels[protected > 0])
-        assert np.any(result != image.pixels)
-        print(
-            json.dumps(
-                {
-                    "real_flux_inference": True,
-                    "protected_pixels_exact": True,
-                    "seconds": time.perf_counter() - start,
-                    "output": str(output),
-                }
-            )
-        )
+        print(json.dumps(report), flush=True)
+        if not success:
+            raise SystemExit(job["message"])
+    finally:
+        service.close()
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except UserError as exc:
-        raise SystemExit(str(exc))
+    main()

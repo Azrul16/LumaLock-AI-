@@ -51,7 +51,7 @@ def test_local_http_chat_followups_download_and_access_checks(photograph, local_
     async def scenario():
         calls = []
 
-        def edit(root, source, prompt, models, preserve, cancelled, progress):
+        def edit(root, source, prompt, models, preserve, cancelled, progress, **options):
             calls.append((root, source, prompt))
             result = local_storage / f"result-{len(calls)}.png"
             pixels = np.asarray(Image.open(source)).copy()
@@ -126,7 +126,7 @@ def test_local_http_chat_followups_download_and_access_checks(photograph, local_
             response = await client.get(f"/api/images/{first['result'].split('/')[-1]}?download=1")
             assert response.status == 200
             assert "attachment" in response.headers["Content-Disposition"]
-            assert Image.open(io.BytesIO(await response.read())).size == (192, 128)
+            assert Image.open(io.BytesIO(await response.read())).size == (3840, 2560)
             response = await client.get(f"/api/images/{first['result'].split('/')[-1]}?preview=320")
             assert response.content_type == "image/webp"
             assert Image.open(io.BytesIO(await response.read())).size == (192, 128)
@@ -145,7 +145,7 @@ def test_web_job_busy_guard_and_safe_cancellation(photograph, local_storage):
     from lumalock.core.exceptions import Cancelled
     from lumalock.webapp.service import Busy
 
-    def edit(root, source, prompt, models, preserve, cancelled, progress):
+    def edit(root, source, prompt, models, preserve, cancelled, progress, **options):
         while not cancelled():
             time.sleep(0.005)
         raise Cancelled("Edit stopped")
@@ -185,7 +185,7 @@ def test_restart_selects_newest_chat_and_keeps_sidebar_order(local_storage):
 
 
 def test_stop_during_backend_error_is_cancelled_not_retried(photograph, local_storage):
-    def editor(root, source, prompt, models, preserve, cancelled, progress):
+    def editor(root, source, prompt, models, preserve, cancelled, progress, **options):
         while not cancelled():
             time.sleep(0.005)
         raise ConnectionError("Worker stopped before interrupt response")
@@ -229,3 +229,76 @@ def test_delete_http_requires_session_and_keeps_an_empty_chat(local_storage):
             service.close()
 
     asyncio.run(scenario())
+
+
+def test_unlimited_edit_retains_explicit_stop_without_partial_image(photograph, local_storage):
+    def editor(root, source, prompt, models, preserve, cancelled, progress, **options):
+        while not cancelled():
+            time.sleep(0.005)
+        raise ConnectionError("Worker was stopped by the deadline")
+
+    service = ImageService(models=ReadyModels(), editor=editor)
+    source = local_storage / "source.png"
+    Image.fromarray(photograph).save(source)
+    identifier = service.state()["chat"]["id"]
+    service.attach(identifier, source, "Photo.png")
+    job = service.start_edit(identifier, "Warm late afternoon", mode="Natural")
+    assert job["limit_seconds"] is None
+    assert not hasattr(service, "deadline_timer")
+    assert not service.cancelled.is_set()
+    service.cancel()
+    service.close()
+    state = service.state(identifier)
+    assert state["job"]["status"] == "cancelled"
+    assert not state["chat"]["turns"][-1]["result"]
+    assert source.exists()
+
+
+def test_manual_protection_and_mode_are_persisted_for_each_request(photograph, local_storage):
+    observed = []
+
+    def editor(root, source, prompt, models, preserve, cancelled, progress, **options):
+        observed.append(options)
+        return source
+
+    service = ImageService(models=ReadyModels(), editor=editor)
+    source = local_storage / "source.png"
+    Image.fromarray(photograph).save(source)
+    identifier = service.state()["chat"]["id"]
+    service.attach(identifier, source, "Photo.png")
+    shape = {"tool": "rectangle", "points": [[0.2, 0.2], [0.7, 0.8]]}
+    service.set_protection(identifier, [shape])
+    service.start_edit(
+        identifier, "Remove the background object", mode="Creative", preset="Dramatic Sky"
+    )
+    service.close()
+    turn = service.state(identifier)["chat"]["turns"][-1]
+    assert turn["mode"] == "Creative" and turn["preset"] == "Dramatic Sky"
+    assert turn["protection"][0]["tool"] == "rectangle"
+    assert observed[0]["protection"][0].tool == "rectangle"
+
+
+def test_cancellation_during_result_storage_cannot_publish_success(photograph, local_storage):
+    import threading
+
+    expired = threading.Event()
+    service = ImageService(models=ReadyModels(), editor=lambda root, source, *args, **kw: source)
+    source = local_storage / "source.png"
+    Image.fromarray(photograph).save(source)
+    identifier = service.state()["chat"]["id"]
+    service.attach(identifier, source, "Source.png")
+    remember = service.store.remember_image
+
+    def expire_during_storage(path):
+        result = remember(path)
+        service.cancel()
+        expired.set()
+        return result
+
+    service.store.remember_image = expire_during_storage
+    service.start_edit(identifier, "Late afternoon")
+    assert expired.wait(timeout=10)
+    service.close()
+    state = service.state(identifier)
+    assert state["job"]["status"] == "cancelled"
+    assert state["chat"]["turns"][-1]["result"] is None

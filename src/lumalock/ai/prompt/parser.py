@@ -63,7 +63,7 @@ def parse_prompt(prompt: str, analysis, current: EditState) -> EditPlan:
     if not values and not regions:
         return EditPlan(
             confidence=0.2,
-            explanation="Request not recognized by the offline fallback. Try exposure, warmer, cinematic, sky, or natural correction; install the local prompt model for broader language support.",
+            explanation="This manual adjustment was not recognized. Use the image chat for direct natural-language FLUX editing.",
         )
     return EditPlan(
         intent="regional" if regions else "style",

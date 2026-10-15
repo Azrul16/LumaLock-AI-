@@ -43,9 +43,7 @@ def diagnostics(hardware=None):
         )
     else:
         lines.append("CUDA inference: unavailable until PyTorch is installed")
-    installed = [
-        path.name for path in model_dir().iterdir() if (path / "installation.json").is_file()
-    ]
+    installed = ["flux"] if (model_dir() / "flux/installation.json").is_file() else []
     lines.append("Installed models: " + (", ".join(installed) or "none; core editor is model-free"))
     probe = data_dir() / ".write-probe"
     try:

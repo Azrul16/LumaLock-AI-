@@ -1,5 +1,34 @@
 # LumaLock AI status
 
+## Quality correction update — 2026-10-15
+
+This section supersedes older timing/profile/quality statements below. Visual inspection
+of the old real FLUX output confirmed texture loss: the 384px working image was enlarged
+back to 2048px. Its 14m52s completion and protected-pixel checks do not establish good
+photographic quality. It was not a 4K result.
+
+The total execution watchdog is removed. Quality now defaults to 1024px / 40 base steps;
+Maximum defaults to 1536px / 50 base steps. Memory retries retain selected resolution.
+Natural mode with the exact prompt `auto enhance`, `professional enhance`, or
+`enhance this photo` (no preset or Professional Enhance) uses original-resolution
+photographic adjustments without regeneration or denoising. Extra instructions use FLUX.
+
+Save 4K image exports at least 3840px on the longest edge without cropping, keeps larger
+images intact, and leaves working assets and original anchors unchanged. Enlargement is
+currently Lanczos, explicitly labelled, not neural detail reconstruction. Original-pixel
+protection is verified at working resolution; a resized export necessarily resamples pixels.
+
+Real browser verification on `my photo.jpg`: original-resolution auto correction completed
+in 7.98 seconds; 3840×3840 PNG downloaded; original SHA-256 unchanged; before/after images
+loaded and no JavaScript errors. This is not a new FLUX inference benchmark. Evidence:
+`data/preview/quality-correction-acceptance.json`, `photographic-correction-4k.png`, and
+`quality-correction-browser.png`. Isolated launch smoke passed. Automated suite: 109 tests
+passed in the final run (26.12 seconds); Ruff and formatting checks also passed.
+
+Research and recommended staged architecture: [quality-research.md](quality-research.md).
+New high-resolution FLUX inference, Klein, neural upscaling and whole-person neural masks
+remain unbenchmarked/unimplemented. No new model weights were downloaded.
+
 ## CURRENT: local browser app (2026-10-15)
 
 ### Chat deletion and bounded CPU/GPU coordination

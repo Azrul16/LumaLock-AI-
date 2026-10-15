@@ -17,7 +17,7 @@ from lumalock.core.exceptions import UserError
 from lumalock.imaging.masks import blend_uint8, mask_pixels
 
 
-def creative_edit(image, state, layer, plan, models, cancelled, progress):
+def creative_edit(image, state, layer, plan, models, cancelled, progress, manual_protection=None):
     base = image
     if state.generated_file:
         prior = cv2.imread(state.generated_file)
@@ -29,12 +29,22 @@ def creative_edit(image, state, layer, plan, models, cancelled, progress):
     editable = mask_pixels(layer, image.shape[:2])
     protected = np.zeros(image.shape[:2], np.float32)
     if state.identity_lock:
-        protected, faces = face_mask(image, models.settings.face_expansion)
+        manual = manual_protection is not None or any(mask.protected for mask in state.masks)
+        if manual_protection is not None:
+            if manual_protection.shape != protected.shape:
+                raise UserError("The protection mask does not match this photo.")
+            protected = manual_protection.astype(np.float32)
+        if not manual:
+            protected, faces = face_mask(image, models.settings.face_expansion)
         # Add user-created face protection masks to the detected protection region.
         for mask in state.masks:
             if mask.kind == "face" or mask.protected:
                 protected = np.maximum(protected, mask_pixels(mask, image.shape[:2]))
         if not protected.any():
+            if manual:
+                raise UserError(
+                    "Your protection mask is empty. Paint an area or Clear protection to use automatic face selection."
+                )
             raise UserError(
                 "Preserve people could not identify a face. Try a clearer, front-facing photo. For a scene without people, switch Preserve people off below the prompt."
             )

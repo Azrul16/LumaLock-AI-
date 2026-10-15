@@ -1,18 +1,15 @@
 # Troubleshooting
 
-Extract the entire ZIP into a writable Windows x64 folder before opening LumaLockAI.exe.
-Do not move only the EXE or launch it inside the archive. No Python installation is required.
+Launch LumaLock AI.cmd opens the local browser app. Keep its terminal open. Models & settings
+shows only the FLUX engine and its transformer, conditioning encoder, VAE and runtime status.
+Download / repair resumes partial transfers; Verify checks complete SHA-256 values.
 
-If AI models are missing, complete first-run setup or use Settings / AI Models. The download
-uses actual model files and upstream checksums; interrupted transfers may be retried. Gated
-access, when required, needs acceptance of official terms and HF_TOKEN/normal HF login.
-Never share a token in the archive. Manual controls and quick looks need no weights.
+Choose Preview for shortest processing. GPU 0% can be real during checksum checks and file
+loading; CUDA is used for supported image stages. CPU mode and memory recovery can use CPU
+VAE processing. On this 8 GiB RAM / 4 GiB GPU laptop, paging remains a bottleneck.
 
-NVIDIA acceleration requires a compatible current driver. An 8 GiB RAM / 4 GiB GPU machine
-may need substantial Windows virtual memory and smaller generation resolution. Qwen is
-unloaded before FLUX; a reported OOM gets one smaller, stronger-offload retry. No runtime
-promise is made. CPU-only machines use CPU fallback and can be much slower.
-
-Technical logs are under data/logs and data/backend/backend.log next to the portable EXE.
-Keep your source photos safe; exports and .luma projects use separate filenames. Classical
-face/foreground/sky detection needs visual coverage review; paint protection for missed faces.
+There is no total execution deadline. Stop cancels an edit. Quality is now the default
+(1024px generation); Maximum uses 1536px by default and can take substantially longer.
+Save 4K enlarges to at least 3840px on the long edge; it does not recreate lost detail.
+For original-resolution correction without diffusion, use Natural and `auto enhance`.
+Read quality-research.md before comparing file dimensions with photographic quality.

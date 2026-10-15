@@ -14,11 +14,11 @@ from lumalock.project.edit_state import EditState
 
 def test_quality_changes_real_inference_work():
     settings = Settings(quality_mode="Maximum")
-    assert creative_quality(settings).steps == 60 and creative_quality(settings).resolution == 1024
+    assert creative_quality(settings).steps == 50 and creative_quality(settings).resolution == 1536
     settings.creative_resolution = 1536
     assert creative_quality(settings).resolution == 1536
     settings.quality_mode = "Preview"
-    assert creative_quality(settings).steps == 20 and creative_quality(settings).resolution == 512
+    assert creative_quality(settings).steps == 12 and creative_quality(settings).resolution == 512
     settings.quality_mode = "Quality"
     assert creative_quality(settings).steps == 40 and creative_quality(settings).resolution == 1024
 

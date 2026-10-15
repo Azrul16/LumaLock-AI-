@@ -128,6 +128,7 @@ class ComfyManager:
             OMP_NUM_THREADS=str(max(1, min(4, (os.cpu_count() or 2) - 1))),
             MKL_NUM_THREADS=str(max(1, min(4, (os.cpu_count() or 2) - 1))),
             OPENBLAS_NUM_THREADS="1",
+            LUMALOCK_KEEP_GGUF_MMAP="1" if hardware.ram_gb <= 16 else "0",
         )
         log_path = working / "backend.log"
         self.log_start = log_path.stat().st_size if log_path.exists() else 0

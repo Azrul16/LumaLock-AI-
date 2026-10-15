@@ -1,12 +1,4 @@
 models:
-  prompt:
-    id: Qwen/Qwen2.5-1.5B-Instruct-GGUF
-    name: Qwen Editing Director Q4_K_M
-    revision: 91cad51170dc346986eccefdc2dd33a9da36ead9
-    file: qwen2.5-1.5b-instruct-q4_k_m.gguf
-    size_gb: 1.04
-    min_ram: 2
-    license: Apache-2.0
   flux:
     id: city96/FLUX.2-dev-gguf
     name: FLUX.2-dev Q2_K
@@ -26,4 +18,3 @@ models:
       destination: vae
 limits:
   ai_storage_gib: 30
-  backend_runtime_estimate_gib: 5.0

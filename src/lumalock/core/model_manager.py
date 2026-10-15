@@ -7,14 +7,13 @@ import logging
 import os
 import shutil
 import threading
-from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
 
 from lumalock.core.config import load_settings, model_dir, resource_path
 from lumalock.core.exceptions import Cancelled, UserError
-from lumalock.core.memory_manager import MemoryManager, release_memory
+from lumalock.core.memory_manager import release_memory
 
 MODEL_CONFIG = yaml.safe_load(resource_path("config/models.yaml").read_text(encoding="utf-8"))
 MODEL_SPECS = MODEL_CONFIG["models"]
@@ -29,13 +28,11 @@ class ModelManager:
         os.environ.setdefault("HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_PERFILE_SIZE", "32mb")
         os.environ.setdefault("HF_XET_RECONSTRUCTION_DOWNLOAD_BUFFER_LIMIT", "256mb")
         self.settings = load_settings()
-        self.memory = MemoryManager()
-        self.loaded = {}
         self.lock = threading.RLock()
 
     def location(self, key):
         if key not in MODEL_SPECS:
-            raise UserError("Only the configured Qwen and FLUX models are supported.")
+            raise UserError("Only the configured FLUX image engine is supported.")
         return model_dir() / key
 
     def expected_files(self, key):
@@ -87,11 +84,23 @@ class ModelManager:
         except UserError:
             return False
 
+    def component_status(self, key):
+        result = []
+        for name in self.expected_files(key):
+            label = (
+                "Transformer"
+                if name.startswith("diffusion_models")
+                else "Text encoder"
+                if name.startswith("text_encoders")
+                else "VAE"
+            )
+            path = self.location(key) / name
+            result.append({"name": label, "present": path.is_file() and path.stat().st_size > 0})
+        return result
+
     def available(self, key):
         if not self.installed(key):
             return False
-        if key == "prompt":
-            return importlib.util.find_spec("llama_cpp") is not None
         from lumalock.comfy.manager import runtime_root
 
         root = runtime_root()
@@ -163,7 +172,7 @@ class ModelManager:
                     }
                 )
         total = sum(item["size"] for item in plan)
-        runtime_bytes = int(MODEL_CONFIG["limits"].get("backend_runtime_estimate_gib", 0) * 1024**3)
+        runtime_bytes = 0  # Python/runtime libraries are not AI model weights.
         if total + runtime_bytes > MODEL_CONFIG["limits"]["ai_storage_gib"] * 1024**3:
             raise UserError(
                 f"Complete AI weights plus backend runtime exceed the 30 GiB budget: {(total + runtime_bytes) / 1024**3:.2f} GiB."
@@ -270,41 +279,5 @@ class ModelManager:
             if target.exists():
                 shutil.rmtree(target)
 
-    @contextmanager
-    def session(self, key, loader):
-        with self.lock:
-            if not self.installed(key):
-                raise UserError(
-                    f"{MODEL_SPECS[key]['name']} is not installed. Open Models & settings to download it."
-                )
-            self.verify(key)
-            self.release_all()
-            model = loader(self.location(key))
-            self.loaded[key] = model
-            try:
-                yield model
-            finally:
-                self.loaded.clear()
-                # The caller still holds a reference until its with-block ends.
-                # Move tensor modules off the GPU before clearing the allocator.
-                components = getattr(model, "components", {})
-                dispatched = any(
-                    getattr(component, "hf_device_map", None) for component in components.values()
-                )
-                offloaded = any(
-                    any(parameter.is_meta for parameter in component.parameters())
-                    for component in components.values()
-                    if hasattr(component, "parameters")
-                )
-                if hasattr(model, "maybe_free_model_hooks") and not dispatched:
-                    model.maybe_free_model_hooks()
-                if hasattr(model, "to") and not dispatched and not offloaded:
-                    model.to("cpu")
-                if hasattr(model, "close"):
-                    model.close()
-                del model
-                release_memory()
-
     def release_all(self):
-        self.loaded.clear()
         release_memory()

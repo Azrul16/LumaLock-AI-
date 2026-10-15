@@ -25,9 +25,7 @@ class FluxBackend:
 
     def edit(self, image, prompt, mask, options, cancelled, progress):
         if not self.available():
-            raise UserError(
-                "FLUX is unavailable. Install the two-model bundle in Models & settings."
-            )
+            raise UserError("FLUX is unavailable. Install the image engine in Models & settings.")
         if options.strength == 0:
             return image.copy()
         self.models.verify("flux", cancelled, progress)
@@ -39,7 +37,7 @@ class FluxBackend:
             telemetry = None
             try:
                 backend.start(cancelled, progress, stronger_offload=attempt > 0)
-                quality = creative_quality(self.models.settings, 0.5 if attempt else 1)
+                quality = creative_quality(self.models.settings)
                 source = Image.fromarray(image)
                 source.thumbnail((quality.resolution, quality.resolution), Image.Resampling.LANCZOS)
                 width, height = (max(64, round(d / 16) * 16) for d in source.size)
@@ -47,7 +45,7 @@ class FluxBackend:
                 buffer = io.BytesIO()
                 source.save(buffer, format="PNG")
                 uploaded = f"lumalock-{uuid.uuid4().hex}.png"
-                progress(-1, "Preparing reference image…")
+                progress(-1, f"Preparing {width} × {height} reference image…")
                 response = backend.http.post(
                     backend.url + "/upload/image",
                     files={"image": (uploaded, buffer.getvalue(), "image/png")},
@@ -127,14 +125,14 @@ class FluxBackend:
                                     )
                                 ).copy()
                     time.sleep(0.4)
-                progress(-1, "Retrying a smaller edit with stronger CPU offloading…")
+                progress(-1, "Retrying at the same resolution with stronger CPU offloading…")
             except (requests.RequestException, UserError) as exc:
                 if cancelled():
                     raise Cancelled("FLUX edit cancelled.") from exc
                 if attempt == 0 and backend.memory_failed():
                     progress(
                         -1,
-                        "GPU memory was exhausted. Restarting with smaller dimensions and stronger offloading…",
+                        "GPU memory was exhausted. Retrying at the same resolution with stronger offloading…",
                     )
                     continue
                 if backend.memory_failed():

@@ -13,7 +13,7 @@ def test_model_checksum_detects_same_size_corruption(local_storage, monkeypatch)
 
     monkeypatch.setitem(
         MODEL_SPECS,
-        "prompt",
+        "fixture",
         {
             "id": "test-fixture",
             "revision": "test",
@@ -21,7 +21,7 @@ def test_model_checksum_detects_same_size_corruption(local_storage, monkeypatch)
         },
     )
     models = ModelManager(Hardware(8, "CPU", 0, "LOW_MEMORY", "3.11", "test"))
-    path = models.location("prompt")
+    path = models.location("fixture")
     path.mkdir(parents=True)
     weight = path / "test.safetensors"
     weight.write_bytes(b"model-original")
@@ -38,10 +38,10 @@ def test_model_checksum_detects_same_size_corruption(local_storage, monkeypatch)
         },
     }
     (path / "installation.json").write_text(json.dumps(marker))
-    models.verify("prompt")
+    models.verify("fixture")
     weight.write_bytes(b"model-modified")
     with pytest.raises(UserError, match="checksum"):
-        models.verify("prompt")
+        models.verify("fixture")
 
 
 def test_empty_manifest_and_missing_support_are_not_installed(local_storage):

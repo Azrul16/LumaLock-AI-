@@ -20,6 +20,7 @@ from PIL import Image, UnidentifiedImageError
 from lumalock.core.config import data_dir
 from lumalock.core.exceptions import UserError
 from lumalock.core.logging import configure_logging
+from lumalock.export.four_k import four_k_png
 from lumalock.webapp.previews import PreviewCache
 from lumalock.webapp.resources import ResourceMonitor
 from lumalock.webapp.service import Busy, ImageService
@@ -28,6 +29,7 @@ SERVICE = web.AppKey("service", ImageService)
 SESSION = web.AppKey("session", str)
 STOP = web.AppKey("stop", asyncio.Event)
 RESOURCES = web.AppKey("resources", ResourceMonitor)
+EXPORT_GATE = web.AppKey("export_gate", asyncio.Semaphore)
 PREVIEWS = web.AppKey("previews", PreviewCache)
 STATIC = Path(__file__).parent / "static"
 
@@ -150,6 +152,13 @@ async def select(request):
     )
 
 
+async def protection(request):
+    payload = await request.json()
+    return web.json_response(
+        request.app[SERVICE].set_protection(request.match_info["chat"], payload.get("shapes", []))
+    )
+
+
 async def edit(request):
     payload = await request.json()
     if not isinstance(payload.get("preserve", True), bool):
@@ -159,8 +168,10 @@ async def edit(request):
             request.match_info["chat"],
             payload.get("prompt", ""),
             payload.get("preserve", True),
-            payload.get("quality", "Maximum"),
+            payload.get("quality", "Quality"),
             payload.get("device", "auto"),
+            payload.get("mode", "Natural"),
+            payload.get("preset"),
         )
     )
 
@@ -178,10 +189,16 @@ async def image(request):
             raise UserError("Choose a valid preview size.")
         content = await asyncio.to_thread(request.app[PREVIEWS].get, path, maximum)
         return web.Response(body=content, content_type="image/webp")
-    response = web.FileResponse(path)
     if request.query.get("download") == "1":
-        response.headers["Content-Disposition"] = 'attachment; filename="LumaLock-edit.png"'
-    return response
+        # Bound simultaneous full-resolution allocations without blocking server polling.
+        async with request.app[EXPORT_GATE]:
+            content = await asyncio.to_thread(four_k_png, path)
+        return web.Response(
+            body=content,
+            content_type="image/png",
+            headers={"Content-Disposition": 'attachment; filename="LumaLock-edit-4K.png"'},
+        )
+    return web.FileResponse(path)
 
 
 async def models(request):
@@ -194,7 +211,7 @@ async def models(request):
         raise UserError("Choose valid model setup options.")
     return web.json_response(
         request.app[SERVICE].start_models(
-            payload.get("keys", ["prompt", "flux"]),
+            payload.get("keys", ["flux"]),
             payload.get("accept_license", False),
             payload.get("verify", False),
         )
@@ -225,6 +242,7 @@ def create_app(service=None, monitor=None):
     app[STOP] = asyncio.Event()
     app[RESOURCES] = monitor or ResourceMonitor(data_dir())
     app[PREVIEWS] = PreviewCache()
+    app[EXPORT_GATE] = asyncio.Semaphore(1)
     app.cleanup_ctx.append(resource_lifetime)
     app.add_routes(
         [
@@ -237,6 +255,7 @@ def create_app(service=None, monitor=None):
             web.delete("/api/chats/{chat}", delete_chat),
             web.post("/api/chats/{chat}/upload", upload),
             web.post("/api/chats/{chat}/select", select),
+            web.post("/api/chats/{chat}/protection", protection),
             web.post("/api/chats/{chat}/edit", edit),
             web.get("/api/images/{image}", image),
             web.post("/api/models", models),

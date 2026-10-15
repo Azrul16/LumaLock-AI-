@@ -3,8 +3,7 @@
 import uuid
 from dataclasses import dataclass
 
-from lumalock.ai.prompt.local_model import interpret
-from lumalock.ai.prompt.parser import apply_plan
+from lumalock.ai.prompt.parser import apply_plan, parse_prompt
 from lumalock.ai.prompt.schema import EditPlan
 from lumalock.core.exceptions import Cancelled
 from lumalock.project.edit_state import EditState, MaskLayer
@@ -18,7 +17,7 @@ class PreparedPrompt:
 
 
 def prepare_prompt(prompt, image, analysis, state, models, segmentation, cancelled, progress):
-    plan = interpret(prompt, analysis, state, models, cancelled, progress)
+    plan = parse_prompt(prompt, analysis, state)
     if plan.generative.enabled or plan.confidence < 0.4:
         return PreparedPrompt(plan, state, prompt)
     for region in plan.regions:

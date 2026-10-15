@@ -11,7 +11,7 @@ from lumalock.core.config import Settings, data_dir
 from lumalock.core.quality import creative_quality
 
 
-def test_crashed_oom_worker_restarts_and_retries_smaller(local_storage, monkeypatch):
+def test_crashed_oom_worker_restarts_without_lowering_quality(local_storage, monkeypatch):
     image = np.full((64, 64, 3), 120, dtype=np.uint8)
     buffer = io.BytesIO()
     Image.fromarray(image).save(buffer, format="PNG")
@@ -77,7 +77,7 @@ def test_crashed_oom_worker_restarts_and_retries_smaller(local_storage, monkeypa
     assert len(attempts) == 2
     assert attempts[1].stronger
     assert all(attempt.stopped for attempt in attempts)
-    assert creative_quality(models.settings, 0.5).resolution == 256
+    assert creative_quality(models.settings).resolution == 512
 
 
 def test_memory_failure_inspection_ignores_old_runs(local_storage):

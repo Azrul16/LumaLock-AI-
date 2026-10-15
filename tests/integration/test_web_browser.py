@@ -22,8 +22,8 @@ def test_edge_image_chat_save_edit_branch_refresh_and_mobile(photograph, local_s
         pytest.skip("Microsoft Edge is not installed on this host")
     calls = []
 
-    def editor(root, source, prompt, models, preserve, cancelled, progress):
-        calls.append((root, source, prompt))
+    def editor(root, source, prompt, models, preserve, cancelled, progress, **options):
+        calls.append((root, source, prompt, options))
         result = local_storage / f"browser-result-{len(calls)}.png"
         pixels = np.asarray(Image.open(source)).copy()
         pixels[0, 0] = [30, len(calls), 20]
@@ -107,10 +107,28 @@ def test_edge_image_chat_save_edit_branch_refresh_and_mobile(photograph, local_s
             page.get_by_role("heading", name="What would you like to change?").wait_for()
             page.locator("#photo-input").set_input_files(str(source))
             page.locator("#attachment").wait_for(state="visible")
+            assert page.locator("#edit-mode").input_value() == "Natural"
+            assert page.locator("#preset option").count() == 13
+            page.locator("#preset").select_option("Late Afternoon")
+            page.locator("#protect-area").click()
+            page.wait_for_function("() => !document.querySelector('#apply-protection').disabled")
+            page.locator("#protection-tool").select_option("rectangle")
+            box = page.locator("#protection-canvas").bounding_box()
+            page.mouse.move(box["x"] + box["width"] * 0.3, box["y"] + box["height"] * 0.25)
+            page.mouse.down()
+            page.mouse.move(box["x"] + box["width"] * 0.65, box["y"] + box["height"] * 0.8, steps=3)
+            page.mouse.up()
+            page.locator("#apply-protection").click()
+            page.locator("#protection-dialog").wait_for(state="hidden")
+            page.wait_for_function(
+                "() => document.querySelector('#protection-count').textContent === '(1)'"
+            )
             for index, prompt in enumerate(
                 ("Browser QA: improve lighting", "Browser QA: follow-up edit"), start=1
             ):
                 page.locator("#prompt").fill(prompt)
+                if index == 2:
+                    page.locator("#edit-mode").select_option("Creative")
                 if index == 1:
 
                     def preserve_new_draft(route):
@@ -129,11 +147,21 @@ def test_edge_image_chat_save_edit_branch_refresh_and_mobile(photograph, local_s
                     page.unroute("**/api/chats/*/edit")
             assert calls[0][0] == calls[1][0]
             assert calls[0][1] != calls[1][1]
+            assert calls[0][3]["mode"] == "Natural" and calls[1][3]["mode"] == "Creative"
+            assert calls[0][3]["preset"] == "Late Afternoon"
+            assert calls[0][3]["protection"][0].tool == "rectangle"
+            page.get_by_role("button", name="Before / after").first.click()
+            page.wait_for_function(
+                "() => document.querySelector('#compare-before').naturalWidth > 0 && document.querySelector('#compare-after').naturalWidth > 0"
+            )
+            assert page.locator("#compare-before").is_visible()
+            assert page.locator("#compare-after").is_visible()
+            page.locator("#close-compare").click()
             with page.expect_download() as download:
-                page.get_by_role("link", name="Save image").first.click()
+                page.get_by_role("link", name="Save 4K image").first.click()
             target = local_storage / "browser-saved.png"
             download.value.save_as(str(target))
-            assert Image.open(target).size == (192, 128)
+            assert Image.open(target).size == (3840, 2560)
             page.get_by_role("button", name="Edit image").first.click()
             page.locator("#prompt").fill("Browser QA: branch from first result")
             page.get_by_role("button", name="Send prompt").click()
@@ -161,6 +189,8 @@ def test_edge_image_chat_save_edit_branch_refresh_and_mobile(photograph, local_s
                 "() => document.querySelector('#chat-title').textContent === 'New chat'"
             )
             assert service.state()["chat"]["id"] != old_chat_id
+            assert page.locator("#edit-mode").input_value() == "Natural"
+            assert page.locator("#preset").input_value() == ""
             assert not (service.store.directory / f"{old_chat_id}.json").exists()
             assert page.locator(".result-image").count() == 0
             assert source.read_bytes() == original
@@ -192,7 +222,7 @@ def test_edge_error_retry_cancel_and_model_pause_dialog(photograph, local_storag
         pytest.skip("Microsoft Edge is not installed on this host")
     attempts = []
 
-    def editor(root, source, prompt, models, preserve, cancelled, progress):
+    def editor(root, source, prompt, models, preserve, cancelled, progress, **options):
         attempts.append(prompt)
         if len(attempts) == 1:
             raise UserError("Browser test fixture: repairable error")
@@ -245,7 +275,7 @@ def test_edge_error_retry_cancel_and_model_pause_dialog(photograph, local_storag
             page.get_by_role("button", name="Send prompt").click()
             page.get_by_role("button", name="Retry edit").wait_for()
             page.get_by_role("button", name="Retry edit").click()
-            page.get_by_role("link", name="Save image").wait_for()
+            page.get_by_role("link", name="Save 4K image").wait_for()
             page.locator("#prompt").fill("Wait for cancellation")
             page.get_by_role("button", name="Send prompt").click()
             placeholder = page.locator(".generation-placeholder")
