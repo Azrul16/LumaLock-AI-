@@ -94,7 +94,15 @@ class ModelManager:
             return importlib.util.find_spec("llama_cpp") is not None
         from lumalock.comfy.manager import runtime_root
 
-        return (runtime_root() / "main.py").is_file()
+        root = runtime_root()
+        return (
+            (root / "main.py").is_file()
+            and (root / "custom_nodes/ComfyUI-GGUF/nodes.py").is_file()
+            and all(
+                importlib.util.find_spec(package) is not None
+                for package in ("torch", "transformers", "gguf", "requests", "safetensors")
+            )
+        )
 
     @staticmethod
     def checksum(path, cancelled=lambda: False, report=lambda count: None):
@@ -114,8 +122,9 @@ class ModelManager:
         total = sum(record["size"] for record in manifest["files"].values())
         done = 0
         for name, record in manifest["files"].items():
+            path = self.location(key) / name
             checksum = self.checksum(
-                self.location(key) / name,
+                path,
                 cancelled,
                 lambda count: progress(
                     int(100 * (done + count) / total), f"Verifying {Path(name).name}"
@@ -266,7 +275,7 @@ class ModelManager:
         with self.lock:
             if not self.installed(key):
                 raise UserError(
-                    f"{MODEL_SPECS[key]['name']} is not installed. Open Settings → AI Models to download it."
+                    f"{MODEL_SPECS[key]['name']} is not installed. Open Models & settings to download it."
                 )
             self.verify(key)
             self.release_all()

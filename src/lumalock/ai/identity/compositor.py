@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 
-from lumalock.imaging.masks import blend
+from lumalock.imaging.masks import blend_uint8
 
 
 def safe_generation_mask(editable: np.ndarray, protected: np.ndarray) -> np.ndarray:
@@ -19,11 +19,7 @@ def recover_protected(original, generated, protected):
     expanded = cv2.dilate(hard, np.ones((9, 9), np.uint8))
     feather = cv2.GaussianBlur(expanded, (0, 0), 3)
     feather = np.maximum(feather, hard)
-    return (
-        blend(generated.astype(np.float32), original.astype(np.float32), feather)
-        .round()
-        .astype(np.uint8)
-    )
+    return blend_uint8(generated, original, feather)
 
 
 def protected_integrity(original, result, protected) -> bool:

@@ -67,6 +67,61 @@ def test_verification_can_be_cancelled(local_storage, monkeypatch):
         ModelManager.checksum(path, lambda: True)
 
 
+def test_download_repairs_corruption_and_publishes_only_complete_bundle(local_storage, monkeypatch):
+    from lumalock.core.model_manager import MODEL_SPECS
+
+    monkeypatch.setitem(
+        MODEL_SPECS,
+        "flux",
+        {
+            "id": "test/flux",
+            "revision": "pinned",
+            "file": "model.gguf",
+            "support": [
+                {"id": "test/vae", "revision": "pinned", "file": "vae.bin", "destination": "vae"}
+            ],
+        },
+    )
+    models = ModelManager(Hardware(8, "CPU", 0, "LOW_MEMORY", "3.11", "test"))
+    models.settings.flux_license_accepted = True
+    payload = b"verified model"
+    checksum = hashlib.sha256(payload).hexdigest()
+    plan = [
+        {
+            "key": "flux",
+            "repo": spec["id"],
+            "revision": "pinned",
+            "file": spec["file"],
+            "name": name,
+            "size": len(payload),
+            "sha256": checksum,
+        }
+        for name, spec in models.expected_files("flux").items()
+    ]
+    monkeypatch.setattr(models, "download_plan", lambda: plan)
+    interrupted = [True]
+
+    def receive(item, target, cancelled, progress):
+        if "vae" in item["name"] and interrupted[0]:
+            raise UserError("Connection interrupted")
+        target.with_name(target.name + ".part").write_bytes(payload)
+
+    monkeypatch.setattr("lumalock.core.model_transfer.receive_file", receive)
+    with pytest.raises(UserError, match="interrupted"):
+        models.download("flux")
+    assert not models.installed("flux")
+    assert not (models.location("flux") / "installation.json").exists()
+    interrupted[0] = False
+    models.download("flux")
+    assert models.installed("flux")
+    models.verify("flux")
+    (models.location("flux") / "vae/vae.bin").write_bytes(b"corrupt model!")
+    with pytest.raises(UserError, match="checksum"):
+        models.verify("flux")
+    models.download("flux")
+    models.verify("flux")
+
+
 def test_non_oom_errors_are_not_retried():
     from lumalock.core.memory_manager import MemoryManager
 

@@ -10,6 +10,7 @@ import requests
 from PIL import Image
 
 from lumalock.comfy.manager import ComfyManager
+from lumalock.comfy.progress import ComfyProgress
 from lumalock.comfy.workflow import build_workflow
 from lumalock.core.exceptions import Cancelled, UserError
 from lumalock.core.quality import creative_quality
@@ -25,7 +26,7 @@ class FluxBackend:
     def edit(self, image, prompt, mask, options, cancelled, progress):
         if not self.available():
             raise UserError(
-                "FLUX is unavailable. Install the two-model bundle in Settings → AI Models."
+                "FLUX is unavailable. Install the two-model bundle in Models & settings."
             )
         if options.strength == 0:
             return image.copy()
@@ -35,6 +36,7 @@ class FluxBackend:
         for attempt in range(2):
             backend = ComfyManager()
             uploaded = None
+            telemetry = None
             try:
                 backend.start(cancelled, progress, stronger_offload=attempt > 0)
                 quality = creative_quality(self.models.settings, 0.5 if attempt else 1)
@@ -54,17 +56,37 @@ class FluxBackend:
                 response.raise_for_status()
                 uploaded = response.json()["name"]
                 workflow = build_workflow(
-                    uploaded, prompt, width, height, quality.steps, options.strength, seed
+                    uploaded,
+                    prompt,
+                    width,
+                    height,
+                    quality.steps,
+                    options.strength,
+                    seed,
+                    low_memory=(
+                        attempt > 0
+                        or getattr(getattr(self.models, "hardware", None), "ram_gb", 0) <= 16
+                    ),
                 )
+                progress(-1, "Encoding and editing locally with FLUX…")
+                gpu = (
+                    self.models.settings.device != "cpu"
+                    and getattr(getattr(self.models, "hardware", None), "vram_gb", 0) > 0
+                )
+                device_label = "CUDA selected" if gpu else "CPU"
+                vae_label = "CPU memory fallback" if gpu and attempt else device_label
+                telemetry = ComfyProgress(backend.url, progress, device_label, vae_label)
+                telemetry.start()
                 submitted = backend.http.post(
-                    backend.url + "/prompt", json={"prompt": workflow}, timeout=30
+                    backend.url + "/prompt",
+                    json={"prompt": workflow, "client_id": telemetry.client_id},
+                    timeout=30,
                 )
                 if submitted.status_code != 200:
                     raise UserError(
                         "The local runtime rejected the FLUX workflow. Check installed nodes/models in diagnostics."
                     )
                 job = submitted.json()["prompt_id"]
-                progress(-1, "Encoding and editing locally with FLUX…")
                 while True:
                     if cancelled():
                         backend.http.post(backend.url + "/interrupt", json={}, timeout=5)
@@ -106,11 +128,27 @@ class FluxBackend:
                                 ).copy()
                     time.sleep(0.4)
                 progress(-1, "Retrying a smaller edit with stronger CPU offloading…")
-            except requests.RequestException as exc:
+            except (requests.RequestException, UserError) as exc:
+                if cancelled():
+                    raise Cancelled("FLUX edit cancelled.") from exc
+                if attempt == 0 and backend.memory_failed():
+                    progress(
+                        -1,
+                        "GPU memory was exhausted. Restarting with smaller dimensions and stronger offloading…",
+                    )
+                    continue
+                if backend.memory_failed():
+                    raise UserError(
+                        "This edit exceeded available GPU memory. Choose Preview quality and retry, or use CPU mode in settings."
+                    ) from exc
+                if isinstance(exc, UserError):
+                    raise
                 raise UserError(
                     "The local FLUX backend connection failed. See diagnostics."
                 ) from exc
             finally:
+                if telemetry:
+                    telemetry.close()
                 backend.stop()
                 if uploaded:
                     from lumalock.core.config import data_dir

@@ -1,7 +1,7 @@
 """Sequential model lifetime and OOM retries with a final CPU attempt."""
 
 import gc
-import importlib.util
+import sys
 from threading import RLock
 
 from lumalock.core.exceptions import UserError
@@ -9,9 +9,8 @@ from lumalock.core.exceptions import UserError
 
 def release_memory() -> None:
     gc.collect()
-    if importlib.util.find_spec("torch"):
-        import torch
-
+    torch = sys.modules.get("torch")
+    if torch is not None:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

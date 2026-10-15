@@ -19,9 +19,7 @@ IDENTITY_INSTRUCTION = (
 
 def direct(prompt, analysis, models, cancelled, progress):
     if not models.available("prompt"):
-        raise UserError(
-            "Install Qwen Editing Director in Settings → AI Models before AI generation."
-        )
+        raise UserError("Install Qwen Editing Director in Models & settings before AI generation.")
     from llama_cpp import Llama
 
     grammar_schema = {
@@ -36,7 +34,7 @@ def direct(prompt, analysis, models, cancelled, progress):
         "additionalProperties": False,
     }
 
-    progress(-1, "Qwen is preparing the edit plan locally…")
+    progress(-1, "Qwen is preparing the edit plan locally on CPU…")
     if cancelled():
         raise Cancelled("Prompt planning cancelled.")
     messages = [

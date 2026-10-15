@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from platformdirs import user_data_path
 from pydantic import BaseModel, Field, ValidationError
 
 
@@ -37,22 +36,14 @@ class Settings(BaseModel):
 
 
 def data_dir() -> Path:
-    portable = (
-        Path(sys.executable).parent / "data"
-        if getattr(sys, "frozen", False)
-        else user_data_path("LumaLockAI")
-    )
+    portable = resource_path("data")
     path = Path(os.getenv("LUMALOCK_DATA_DIR", str(portable)))
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def model_dir() -> Path:
-    portable = (
-        Path(sys.executable).parent / "models"
-        if getattr(sys, "frozen", False)
-        else data_dir() / "models"
-    )
+    portable = resource_path("models")
     path = Path(os.getenv("LUMALOCK_MODEL_DIR", str(portable)))
     path.mkdir(parents=True, exist_ok=True)
     return path

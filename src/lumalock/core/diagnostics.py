@@ -12,7 +12,6 @@ def diagnostics(hardware=None):
     hardware = hardware or detect_hardware()
     lines = [f"{key}: {value}" for key, value in hardware.to_dict().items()]
     for name in (
-        "PySide6",
         "numpy",
         "Pillow",
         "opencv-python-headless",

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>LumaLock AI</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css"><script src="/static/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/" aria-label="LumaLock home"><span class="brand-mark">L</span><span>LumaLock<span class="brand-ai"> AI</span></span></a>
+    <button class="new-chat" id="new-chat"><span>＋</span> New chat</button>
+    <p class="eyebrow">YOUR CHATS</p><nav id="chat-list" aria-label="Recent chats"></nav>
+    <div class="sidebar-bottom"><button class="sidebar-button" id="open-settings"><span>⚙</span> Models & settings</button><div class="local-note"><i></i><div>Runs on your computer<small>Your photos stay here.</small></div></div></div>
+  </aside>
+  <div class="main-shell">
+    <header><div class="header-title"><button class="icon-button" id="toggle-sidebar" aria-label="Toggle sidebar">☰</button><span id="chat-title">New chat</span></div><div class="header-actions"><span class="connection" id="connection"><i></i> Local workspace</span><button class="icon-button" id="settings-shortcut" aria-label="Open settings">⚙</button></div></header>
+    <main id="thread" aria-label="Image conversation"><div id="messages" class="messages"></div></main>
+    <section class="composer-zone">
+      <div class="notice" id="notice" role="status" hidden></div>
+      <div class="job" id="job" aria-live="polite" hidden><div class="job-heading"><span class="spinner"></span><span id="job-text">Preparing your image…</span><button id="stop-job">Stop</button></div><progress id="job-progress" max="100"></progress></div>
+      <form class="composer" id="composer">
+        <div id="attachment" class="attachment" hidden><img id="attachment-image" alt="Selected reference photo"><div><strong id="attachment-title">Photo attached</strong><small id="attachment-description">Ready for your prompt</small></div><button class="icon-button" id="remove-attachment" type="button" aria-label="Remove selected photo">×</button></div>
+        <textarea id="prompt" aria-label="Image editing prompt" placeholder="Describe what you'd like to change…" rows="2" maxlength="12000"></textarea>
+        <div class="composer-tools"><div class="composer-left"><button class="attach-button" id="attach" type="button" title="Attach a photo">＋ <span>Photo</span></button><label class="preserve-control"><input id="preserve" type="checkbox" checked><span>Preserve people</span></label></div><div class="composer-right"><select id="quality" aria-label="Image quality"><option>Preview</option><option>Quality</option><option selected>Maximum</option></select><button class="send-button" id="send" type="submit" aria-label="Send prompt"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div></div>
+      </form>
+      <p class="composer-note">Private by design. Local AI can take time. <span>Review every result before saving.</span></p>
+    </section>
+  </div>
+  <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp,image/tiff" hidden>
+  <div class="drop-overlay" id="drop-overlay" hidden><div><span>＋</span><h2>Drop your photo here</h2><p>JPEG, PNG, WebP or TIFF · up to 64 MiB</p></div></div>
+  <dialog id="settings-dialog"><div class="dialog-heading"><div><h2>Models & settings</h2><p>Everything runs locally on your computer.</p></div><button class="icon-button" id="close-settings" aria-label="Close settings">×</button></div><div id="hardware" class="hardware"></div><div id="model-list" class="model-list"></div><p class="storage-note">Complete models: 21.61 GiB · AI storage budget: 30 GiB.<br>Each file is verified before it is used.</p><label class="license-control"><input type="checkbox" id="license"><span>I acknowledge the <a href="https://huggingface.co/black-forest-labs/FLUX.2-dev" target="_blank" rel="noreferrer">FLUX.2-dev Non-Commercial License</a>.</span></label><div class="model-buttons"><button id="download-models" class="solid-button">Download / repair models</button><button id="verify-models">Verify files</button><button id="pause-models" hidden>Pause</button></div><div class="device-setting"><label for="device">Processing device</label><select id="device"><option value="auto">Automatic (recommended)</option><option value="cuda">NVIDIA GPU</option><option value="cpu">CPU · slower</option></select></div><div class="model-job" id="model-job" aria-live="polite" hidden><p id="model-job-text"></p><progress id="model-progress" max="100"></progress></div><div class="settings-footer"><small>Closing this tab keeps your local server running.</small><button id="quit-server" class="text-button">Quit server</button></div></dialog>
+  <dialog id="image-dialog" class="image-dialog"><button id="close-image" class="icon-button" aria-label="Close image">×</button><img id="full-image" alt="Full image preview"></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body></html>

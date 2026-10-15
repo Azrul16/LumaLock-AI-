@@ -14,7 +14,7 @@ from lumalock.ai.identity.validator import validate_identity
 from lumalock.core.backend_registry import GENERATIVE_BACKENDS
 from lumalock.core.config import data_dir
 from lumalock.core.exceptions import UserError
-from lumalock.imaging.masks import blend, mask_pixels
+from lumalock.imaging.masks import blend_uint8, mask_pixels
 
 
 def creative_edit(image, state, layer, plan, models, cancelled, progress):
@@ -36,7 +36,7 @@ def creative_edit(image, state, layer, plan, models, cancelled, progress):
                 protected = np.maximum(protected, mask_pixels(mask, image.shape[:2]))
         if not protected.any():
             raise UserError(
-                "Identity Lock could not identify a face. Create a manual face protection mask before creative editing, or explicitly turn Identity Lock off for a scene without faces."
+                "Preserve people could not identify a face. Try a clearer, front-facing photo. For a scene without people, switch Preserve people off below the prompt."
             )
         editable = safe_generation_mask(editable, protected)
     if not editable.any():
@@ -46,11 +46,7 @@ def creative_edit(image, state, layer, plan, models, cancelled, progress):
     generated = backend.edit(
         base, plan.generative.prompt, editable, plan.generative, cancelled, progress
     )
-    result = (
-        blend(base.astype(np.float32), generated.astype(np.float32), editable)
-        .round()
-        .astype(np.uint8)
-    )
+    result = blend_uint8(base, generated, editable)
     if state.identity_lock:
         result = recover_protected(image, result, protected)
         if not validate_identity(image, result, protected).protected_pixels_intact:

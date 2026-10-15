@@ -3,10 +3,10 @@
 from lumalock.core.model_manager import MODEL_SPECS
 
 
-def build_workflow(image_name, prompt, width, height, steps, strength, seed):
+def build_workflow(image_name, prompt, width, height, steps, strength, seed, low_memory=False):
     flux = MODEL_SPECS["flux"]
     encoder = flux["support"][0]["file"]
-    return {
+    workflow = {
         "1": {
             "class_type": "UnetLoaderGGUFAdvanced",
             "inputs": {
@@ -53,3 +53,12 @@ def build_workflow(image_name, prompt, width, height, steps, strength, seed):
             "inputs": {"images": ["15", 0], "filename_prefix": "LumaLock"},
         },
     }
+    if low_memory:
+        # Bound VAE activation memory instead of decoding the entire frame at once.
+        # These are native nodes in the pinned runtime; model weights/steps stay unchanged.
+        for key, kind in (("5", "VAEEncodeTiled"), ("15", "VAEDecodeTiled")):
+            workflow[key]["class_type"] = kind
+            workflow[key]["inputs"].update(
+                tile_size=512, overlap=64, temporal_size=64, temporal_overlap=8
+            )
+    return workflow

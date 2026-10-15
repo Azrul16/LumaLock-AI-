@@ -79,3 +79,20 @@ def mask_pixels(
 def blend(original: np.ndarray, edited: np.ndarray, mask: np.ndarray) -> np.ndarray:
     weight = np.clip(mask, 0, 1)[..., None]
     return original * (1 - weight) + edited * weight
+
+
+def blend_uint8(original, edited, mask, rows=128):
+    """Same blend and rounding, with float temporaries bounded to a strip of the photo."""
+    result = np.empty(original.shape, dtype=np.uint8)
+    for y in range(0, original.shape[0], rows):
+        section = slice(y, y + rows)
+        result[section] = (
+            blend(
+                original[section].astype(np.float32),
+                edited[section].astype(np.float32),
+                mask[section],
+            )
+            .round()
+            .astype(np.uint8)
+        )
+    return result

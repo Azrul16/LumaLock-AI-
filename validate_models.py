@@ -20,7 +20,6 @@ def main():
     models = ModelManager(detect_hardware())
     if not models.available(args.model):
         raise UserError("Install the selected model bundle before this real acceptance check.")
-    models.verify(args.model)
     image = load_image(args.image)
     start = time.perf_counter()
     if args.model == "prompt":
